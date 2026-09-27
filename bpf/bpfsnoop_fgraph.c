@@ -173,8 +173,11 @@ int BPF_PROG(bpfsnoop_fgraph)
 
     (void) bpf_probe_read_kernel(args, 8*cfg->fn_args.args_nr, ctx);
     if (cfg->fn_args.with_retval && !is_entry)
-        /* typeof(ctx) is 'unsigned long long *', not 'void *'. */
-        (void) bpf_probe_read_kernel(&retval, sizeof(retval), (void *)ctx + 8*cfg->fn_args.args_nr);
+        /* typeof(ctx) is 'unsigned long long *', not 'void *'. Index it by
+         * the trampoline's arg count, see get_tramp_args_nr() in
+         * bpfsnoop_stack.h, and keep the count u32 for the same reason.
+         */
+        (void) bpf_probe_read_kernel(&retval, sizeof(retval), (void *)ctx + 8*(__u32)bpf_get_func_arg_cnt(ctx));
 
     evt = (typeof(evt)) buffer;
     evt->type = is_entry ? BPFSNOOP_EVENT_TYPE_GRAPH_ENTRY

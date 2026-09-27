@@ -48,6 +48,20 @@
  * +------+ SP of current prog
  */
 
+/* The trampoline lays out ctx by its own arg count, which differs from the
+ * tracee's BTF when the verifier marks the BTF of a bpf tracee unreliable,
+ * e.g. a BPF_PROG() entry or a static subprog taking pointers, and falls back
+ * to MAX_BPF_FUNC_REG_ARGS u64 args. Use this count to reach retval and fp.
+ *
+ * It returns u32 on purpose: the helper returns u64, and the verifier rejects
+ * adding a value without a known lower bound to the ctx pointer.
+ */
+static __always_inline __u32
+get_tramp_args_nr(void *ctx)
+{
+	return bpf_get_func_arg_cnt(ctx);
+}
+
 static __always_inline u64
 __get_ptr(void *ctx, __u32 args_nr, bool retval)
 {
