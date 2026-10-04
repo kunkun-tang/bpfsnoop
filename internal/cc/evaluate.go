@@ -768,7 +768,7 @@ func (c *compiler) evaluateDiv(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(asm.Div.Imm(left.reg, int32(right.num)))
 		return newMaterialized(left.reg, left.btf), nil
 	}
@@ -826,7 +826,7 @@ func (c *compiler) evaluateMod(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		if right.num == 1 {
 			c.emit(asm.Mov.Imm(left.reg, 0))
 			return newMaterialized(left.reg, left.btf), nil
@@ -883,7 +883,7 @@ func (c *compiler) evaluateAnd(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(asm.And.Imm(left.reg, int32(right.num)))
 		return newMaterialized(left.reg, left.btf), nil
 	}
@@ -933,7 +933,7 @@ func (c *compiler) evaluateOr(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(asm.Or.Imm(left.reg, int32(right.num)))
 		return newMaterialized(left.reg, left.btf), nil
 	}
@@ -983,7 +983,7 @@ func (c *compiler) evaluateXor(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(asm.Xor.Imm(left.reg, int32(right.num)))
 		return newMaterialized(left.reg, left.btf), nil
 	}
@@ -1173,7 +1173,7 @@ func (c *compiler) evaluateEqEq(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(JmpOff(asm.JNE, left.reg, right.num, 2))
 		c.emitReg2bool(left.reg)
 		return newMaterialized(left.reg, left.btf), nil
@@ -1227,7 +1227,7 @@ func (c *compiler) evaluateNotEq(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(JmpOff(asm.JEq, left.reg, right.num, 2))
 		c.emitReg2bool(left.reg)
 		return newMaterialized(left.reg, left.btf), nil
@@ -1285,7 +1285,7 @@ func (c *compiler) evaluateLt(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(JmpOff(jumpOp, left.reg, right.num, 2))
 		c.emitReg2bool(left.reg)
 		return newMaterialized(left.reg, left.btf), nil
@@ -1343,7 +1343,7 @@ func (c *compiler) evaluateLtEq(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(JmpOff(jumpOp, left.reg, right.num, 2))
 		c.emitReg2bool(left.reg)
 		return newMaterialized(left.reg, left.btf), nil
@@ -1401,7 +1401,7 @@ func (c *compiler) evaluateGt(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(JmpOff(jumpOp, left.reg, right.num, 2))
 		c.emitReg2bool(left.reg)
 		return newMaterialized(left.reg, left.btf), nil
@@ -1459,7 +1459,7 @@ func (c *compiler) evaluateGtEq(expr *cc.Expr) (exprValue, error) {
 		return exprValue{}, err
 	}
 
-	if right.isConstant() {
+	if right.isConstant() && fitsImm32(right.num) {
 		c.emit(JmpOff(jumpOp, left.reg, right.num, 2))
 		c.emitReg2bool(left.reg)
 		return newMaterialized(left.reg, left.btf), nil
@@ -1768,7 +1768,7 @@ func (c *compiler) evaluateCond(expr *cc.Expr) (exprValue, error) {
 	c.emit(JmpOff(asm.JEq, cond.reg, 0, 2))
 
 	if left.isConstant() {
-		c.emit(asm.Mov.Imm(cond.reg, int32(left.num)))
+		c.emit(movImm(cond.reg, left.num))
 	} else {
 		left, err = c.materialize(left)
 		if err != nil {
@@ -1782,10 +1782,10 @@ func (c *compiler) evaluateCond(expr *cc.Expr) (exprValue, error) {
 	c.emit(Ja(1))
 
 	// update jmp off
-	c.insns[jmpInsnIdx].Offset = int16(len(c.insns) - jmpInsnIdx - 1)
+	c.insns[jmpInsnIdx].Offset = int16(rawLen(c.insns[jmpInsnIdx+1:]))
 
 	if right.isConstant() {
-		c.emit(asm.Mov.Imm(cond.reg, int32(right.num)))
+		c.emit(movImm(cond.reg, right.num))
 	} else {
 		right, err = c.materialize(right)
 		if err != nil {
@@ -1796,7 +1796,7 @@ func (c *compiler) evaluateCond(expr *cc.Expr) (exprValue, error) {
 	}
 
 	// update ja off
-	c.insns[jaInsnIdx].Offset = int16(len(c.insns) - jaInsnIdx - 1)
+	c.insns[jaInsnIdx].Offset = int16(rawLen(c.insns[jaInsnIdx+1:]))
 
 	return newMaterialized(cond.reg, cond.btf), nil
 }
