@@ -264,6 +264,9 @@ func __outputFuncArgAttrs(sb *strings.Builder, args []funcArgumentOutput, data [
 		}
 
 		s = btfx.ReprExprType(arg.expr, arg.t, arg.mem, arg.isStr, arg.isNumPtr, argVal, argVal2, 0, argStr, f)
+		if !arg.isStr && inArena(arg.arena, argVal) {
+			s = markArenaPointer(s, arg.t)
+		}
 		if colorfulOutput {
 			gray.Fprint(sb, s)
 		} else {

@@ -10,6 +10,8 @@ import (
 	"github.com/Asphaltt/mybtf"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
+
+	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
 type bpfProgKaddrRange struct {
@@ -29,6 +31,7 @@ type bpfProgFuncInfo struct {
 	funcParams []FuncParamFlags
 	retParam   FuncParamFlags
 	funcArgs   []funcArgumentOutput
+	arena      *cc.ArenaInfo // arena of prog, nil if none
 	argEntrySz int
 	argExitSz  int
 	argDataSz  int

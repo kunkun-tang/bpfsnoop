@@ -148,6 +148,7 @@ func (t *bpfTracing) traceProg(spec *ebpf.CollectionSpec, reusedMaps map[string]
 		return nil
 	}
 	bprog.funcArgs = outputs.args
+	bprog.arena = info.arena
 	bprog.argDataSz = outputs.argDataSize
 	bprog.pktOutput = outputs.pkt
 	fnArgsBufSize, err := injectOutputFuncArgs(progSpec, info.params, info.ret, fexit, info.arena)

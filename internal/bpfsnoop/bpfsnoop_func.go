@@ -10,6 +10,8 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
 	"github.com/fatih/color"
+
+	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
 type funcInfo struct {
@@ -17,6 +19,7 @@ type funcInfo struct {
 	name     string
 	proto    *btf.Func
 	args     []funcArgumentOutput
+	arena    *cc.ArenaInfo
 	params   []FuncParamFlags
 	retParam FuncParamFlags
 	progType ebpf.ProgramType
@@ -44,6 +47,7 @@ func getFuncInfo(funcIP uintptr, helpers *Helpers, graph *FuncGraph, traceeFlags
 		info.name = progInfo.funcName + "[bpf]"
 		info.proto = progInfo.funcProto
 		info.args = progInfo.funcArgs
+		info.arena = progInfo.arena
 		info.params = progInfo.funcParams
 		info.retParam = progInfo.retParam
 		info.progType = progInfo.progType

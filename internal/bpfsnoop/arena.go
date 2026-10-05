@@ -11,11 +11,15 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"slices"
+	"strings"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/link"
 
 	"github.com/bpfsnoop/bpfsnoop/internal/bpf"
+	"github.com/bpfsnoop/bpfsnoop/internal/btfx"
 	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
@@ -158,4 +162,29 @@ func checkArenaKernStart(info *ebpf.ProgramInfo, kernStart uint64) error {
 	}
 
 	return nil
+}
+
+// argArenaTag is the BTF decl tag of a func param that points into an arena,
+// which __arg_arena adds.
+const argArenaTag = "arg:arena"
+
+// isArenaParam reports whether the i-th param of fn is tagged __arg_arena.
+func isArenaParam(fn *btf.Func, i int) bool {
+	return fn != nil && i < len(fn.ParamTags) && slices.Contains(fn.ParamTags[i], argArenaTag)
+}
+
+// inArena reports whether addr is in the user range of arena. Arena pointers
+// lack the address space in BTF, e.g. members, but their values tell.
+func inArena(arena *cc.ArenaInfo, addr uint64) bool {
+	return arena != nil && arena.UserStart <= addr && addr < arena.UserEnd
+}
+
+// markArenaPointer marks the pointer type of a value repr as __arena, e.g.
+// "(struct node *)n=0x7f..." becomes "(struct node __arena *)n=0x7f...".
+func markArenaPointer(s string, typ btf.Type) string {
+	t := btfx.Repr(typ)
+	if !strings.HasSuffix(t, "*") {
+		return s
+	}
+	return strings.Replace(s, "("+t+")", "("+strings.TrimSuffix(t, "*")+"__arena *)", 1)
 }
