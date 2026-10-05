@@ -15,6 +15,8 @@ Please check [bpfsnoop.com](https://bpfsnoop.com) for more details.
 
 See [Typed return values](docs/retval.md) for using `$retval` in argument expressions and packet tracing.
 
+See [Tracing data in a BPF arena](docs/arena.md) for following arena pointers of BPF programs.
+
 For AI-agent integration, see [bpfsnoop MCP server](docs/mcp.md).
 
 ## Acknowledgments
