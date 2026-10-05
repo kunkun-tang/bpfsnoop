@@ -139,7 +139,7 @@ func (t *bpfTracing) traceProg(spec *ebpf.CollectionSpec, reusedMaps map[string]
 	progSpec := spec.Programs[tracingFuncName]
 	bprog := bprogs.funcs[info.funcIP]
 	canExit := fexit || bothEntryExit
-	outputs, ok, err := t.injectTraceeOutputs(progSpec, params, retType, krnl, traceeName,
+	outputs, ok, err := t.injectTraceeOutputs(progSpec, params, retType, krnl, info.arena, traceeName,
 		info.flag.pkt, bothEntryExit, fexit, canExit)
 	if err != nil {
 		return err
@@ -150,7 +150,7 @@ func (t *bpfTracing) traceProg(spec *ebpf.CollectionSpec, reusedMaps map[string]
 	bprog.funcArgs = outputs.args
 	bprog.argDataSz = outputs.argDataSize
 	bprog.pktOutput = outputs.pkt
-	fnArgsBufSize, err := injectOutputFuncArgs(progSpec, info.params, info.ret, fexit)
+	fnArgsBufSize, err := injectOutputFuncArgs(progSpec, info.params, info.ret, fexit, info.arena)
 	if err != nil {
 		return fmt.Errorf("failed to inject output func args: %w", err)
 	}

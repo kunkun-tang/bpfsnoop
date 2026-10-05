@@ -6,6 +6,8 @@ package bpfsnoop
 import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
+
+	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
 const (
@@ -16,7 +18,7 @@ func clearOutputFuncArgs(prog *ebpf.ProgramSpec) {
 	clearOutputSubprog(prog, outputFnArgsStub)
 }
 
-func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncParamFlags, withRetval bool) (asm.Instructions, int, error) {
+func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncParamFlags, withRetval bool, arena *cc.ArenaInfo) (asm.Instructions, int, error) {
 	// output_fn_args(__u64 *args, void *buff, __u64 retval)
 
 	var insns asm.Instructions
@@ -53,6 +55,7 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 			offset += 8
 
 			if prm.IsNumberPtr {
+				insns = append(insns, cc.ArenaTranslate(regArg, arena)...)
 				insns = append(
 					insns,
 					asm.Mov.Imm(asm.R2, 8),
@@ -65,6 +68,7 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 				offset += 8
 			}
 		} else /* IsStr */ {
+			insns = append(insns, cc.ArenaTranslate(regArg, arena)...)
 			if offset != 0 {
 				insns = append(
 					insns,
@@ -101,9 +105,10 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 		offset += 8
 
 		if ret.IsNumberPtr {
+			insns = append(insns, asm.Mov.Reg(asm.R3, regRet))
+			insns = append(insns, cc.ArenaTranslate(asm.R3, arena)...)
 			insns = append(
 				insns,
-				asm.Mov.Reg(asm.R3, regRet),
 				asm.Mov.Imm(asm.R2, 8),
 				asm.Mov.Reg(asm.R1, asm.RFP),
 				asm.Add.Imm(asm.R1, -8),
@@ -114,10 +119,11 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 			offset += 8
 		}
 	} else /* IsStr */ {
+		insns = append(insns, asm.Mov.Reg(asm.R3, regRet))
+		insns = append(insns, cc.ArenaTranslate(asm.R3, arena)...)
 		if offset != 0 {
 			insns = append(
 				insns,
-				asm.Mov.Reg(asm.R3, regRet),
 				asm.Mov.Imm(asm.R2, maxOutputStrLen),
 				asm.Mov.Reg(asm.R1, regBuff),
 				asm.Add.Imm(asm.R1, int32(offset)),
@@ -126,7 +132,6 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 		} else {
 			insns = append(
 				insns,
-				asm.Mov.Reg(asm.R3, regRet),
 				asm.Mov.Imm(asm.R2, maxOutputStrLen),
 				asm.Mov.Reg(asm.R1, regBuff),
 				asm.FnProbeReadKernelStr.Call(),
@@ -143,13 +148,13 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 	return insns, offset, nil
 }
 
-func injectOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncParamFlags, withRetval bool) (int, error) {
+func injectOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncParamFlags, withRetval bool, arena *cc.ArenaInfo) (int, error) {
 	if len(prms) == 0 && !withRetval {
 		clearOutputFuncArgs(prog)
 		return 0, nil
 	}
 
-	insns, size, err := genOutputFuncArgs(prog, prms, ret, withRetval)
+	insns, size, err := genOutputFuncArgs(prog, prms, ret, withRetval, arena)
 	if err != nil {
 		return 0, err
 	}
