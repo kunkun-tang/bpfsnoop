@@ -43,6 +43,10 @@ type CompileExprOptions struct {
 
 	MemoryReadMode MemoryReadMode
 	MemoryReadFlag MemoryReadFlag
+
+	// Arena of the traced prog, if any. Addresses in its user range are
+	// translated to its kernel mapping before reading memory.
+	Arena *ArenaInfo
 }
 
 func CompileFilterExpr(opts CompileExprOptions) (asm.Instructions, error) {

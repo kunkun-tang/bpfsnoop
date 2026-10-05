@@ -64,8 +64,9 @@ func (c *compiler) coreReadByProbeRead(offset int64, reg asm.Register, lastIdx b
 	if offset != 0 {
 		c.emit(asm.Add.Imm(immReg, int32(offset)))
 	}
+	c.emit(asm.Mov.Reg(asm.R3, immReg)) // r3 = r1
+	c.emit(ArenaTranslate(asm.R3, c.arena)...)
 	c.emit(
-		asm.Mov.Reg(asm.R3, immReg),  // r3 = r1
 		asm.Mov.Imm(asm.R2, 8),       // r2 = 8
 		asm.Mov.Reg(asm.R1, asm.RFP), // r1 = rfp
 		asm.Add.Imm(asm.R1, -8),      // r1 -= 8

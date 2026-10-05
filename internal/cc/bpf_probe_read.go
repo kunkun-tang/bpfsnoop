@@ -29,6 +29,7 @@ func (c *compiler) emitProbeRead(offsets []pendingOffset, reg asm.Register) {
 		}
 
 		// Dereference - emit probe_read
+		c.emit(ArenaTranslate(asm.R3, c.arena)...)
 		c.emit(
 			asm.Mov.Imm(asm.R2, 8),       // r2 = 8; always read 8 bytes
 			asm.Mov.Reg(asm.R1, asm.RFP), // r1 = r10
