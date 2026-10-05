@@ -122,3 +122,9 @@ XDPCRC_OBJ := xdpcrc
 XDPCRC_SRC := $(wildcard $(XDPCRC_DIR)/*.go $(XDPCRC_DIR)/*.c)
 
 CLIWORKER_SRC := $(wildcard internal/cliworker/*.go)
+
+ARENAPROBE_DIR := ./cmd/arenaprobe
+ARENAPROBE_BPF_OBJ := $(ARENAPROBE_DIR)/arena_bpfel.o $(ARENAPROBE_DIR)/arena_bpfeb.o
+ARENAPROBE_BPF_OBJ += $(ARENAPROBE_BPF_OBJ:%.o=%.go)
+ARENAPROBE_OBJ := arenaprobe
+ARENAPROBE_SRC := $(wildcard $(ARENAPROBE_DIR)/*.go $(ARENAPROBE_DIR)/*.c)

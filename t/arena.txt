@@ -1,0 +1,69 @@
+# Copyright 2026 Leon Hwang.
+# SPDX-License-Identifier: Apache-2.0
+
+# These tests are for tracing data in a BPF arena. arenaprobe builds a
+# two-node list in an arena and passes its head to arena_probe.
+
+# follow arena pointers in output args
+name: arena::output-arg
+tag: arena,fnarg
+feature: arena
+test: -p 'n:arena_main:arena_probe' -m entry --output-arg 'n->next->val' --output-arg 'str(n->next->name)' --limit-events 1
+match: (int)'n->next->val'=2, (array(char[12]))'str(n->next->name)'="second"
+prerequisite: ./arenaprobe
+prerequisite-ready: Running arena_main
+
+---
+
+# copy a struct out of the arena
+name: arena::output-arg:struct
+tag: arena,fnarg
+feature: arena
+test: -p 'n:arena_main:arena_probe' -m entry --output-arg '*n' --limit-events 1
+match: (struct arena_node)'*n'={"val": 1, "name": "first
+prerequisite: ./arenaprobe
+prerequisite-ready: Running arena_main
+
+---
+
+# a kernel pointer stored in the arena
+name: arena::output-arg:kernel-pointer
+tag: arena,fnarg
+feature: arena
+test: -p 'n:arena_main:arena_probe' -m entry --output-arg 'str(n->task->comm)' --limit-events 1
+match: 'str(n->task->comm)'="swapper/0"
+prerequisite: ./arenaprobe
+prerequisite-ready: Running arena_main
+
+---
+
+# follow arena pointers in a filter
+name: arena::filter-arg
+tag: arena,fnarg
+feature: arena
+test: -p 'n:arena_main:arena_probe' -m entry --filter-arg 'n->next->val == 2' --output-arg 'n->val' --limit-events 1
+match: (int)'n->val'=1
+prerequisite: ./arenaprobe
+prerequisite-ready: Running arena_main
+
+---
+
+# mark arena pointers
+name: arena::mark
+tag: arena,fnarg
+feature: arena
+test: -p 'n:arena_main:arena_probe' -m entry --output-arg 'n->next' --limit-events 1
+match: (struct arena_node __arena *)'n->next'=0x
+prerequisite: ./arenaprobe
+prerequisite-ready: Running arena_main
+
+---
+
+# print the pointee of a number pointer arg in the arena
+name: arena::fnarg:number-pointer
+tag: arena,fnarg
+feature: arena
+test: -p 'n:arena_main:arena_probe_val' -m entry --limit-events 1
+match: (1)) cpu=
+prerequisite: ./arenaprobe
+prerequisite-ready: Running arena_main
