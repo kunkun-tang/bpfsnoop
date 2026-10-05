@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bpfsnoop/bpfsnoop/internal/assert"
+	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
 type bpfProgs struct {
@@ -20,8 +21,9 @@ type bpfProgs struct {
 	err   error
 	done  chan struct{}
 
-	progs map[ebpf.ProgramID]*ebpf.Program     // ID -> prog
-	infos map[ebpf.ProgramID]*ebpf.ProgramInfo // ID -> prog info
+	progs  map[ebpf.ProgramID]*ebpf.Program     // ID -> prog
+	infos  map[ebpf.ProgramID]*ebpf.ProgramInfo // ID -> prog info
+	arenas map[ebpf.ProgramID]*cc.ArenaInfo     // ID -> arena, nil if none
 
 	flock sync.Mutex
 	funcs map[uintptr]*bpfProgFuncInfo // func IP -> prog func info
@@ -38,6 +40,7 @@ func NewBPFProgs(pflags []ProgFlag, noParseProgs, disasm bool) (*bpfProgs, error
 	progs.done = make(chan struct{})
 	progs.progs = make(map[ebpf.ProgramID]*ebpf.Program, len(pflags))
 	progs.infos = make(map[ebpf.ProgramID]*ebpf.ProgramInfo, len(pflags))
+	progs.arenas = make(map[ebpf.ProgramID]*cc.ArenaInfo, len(pflags))
 	progs.funcs = make(map[uintptr]*bpfProgFuncInfo, len(pflags))
 	progs.tracings = make(map[string]*bpfTracingInfo, len(pflags))
 	progs.disasm = disasm

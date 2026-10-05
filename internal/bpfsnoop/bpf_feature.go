@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	hasArena         bool
 	hasEndbr         bool
 	requiredLbr      bool
 	hasFsession      bool
@@ -102,6 +103,10 @@ func detectBPFFeatures() (KernelBPFFeatures, error) {
 	debugLogIf(!hasGetFuncArgCnt, "bpf_get_func_arg_cnt() is not supported, detecting trampoline arg count in userspace")
 
 	hasFsession, err = btfEnumValue("bpf_attach_type", "BPF_TRACE_FSESSION")
+	if err != nil {
+		return features, err
+	}
+	hasArena, err = btfEnumValue("bpf_map_type", "BPF_MAP_TYPE_ARENA")
 	if err != nil {
 		return features, err
 	}
@@ -225,6 +230,7 @@ func printFeatures() {
 		{"kprobe.session", hasKprobeSession},
 		{"Nested tracing", features.HasNestedTracing},
 		{"ENDBR insn", hasEndbr},
+		{"arena", hasArena},
 	} {
 		fmt.Printf("%s:\t%t\n", feature.name, feature.value)
 	}

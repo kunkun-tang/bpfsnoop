@@ -11,10 +11,12 @@ import (
 	"github.com/cilium/ebpf/btf"
 
 	"github.com/bpfsnoop/bpfsnoop/internal/btfx"
+	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
 type bpfTracingInfo struct {
 	prog     *ebpf.Program
+	arena    *cc.ArenaInfo // arena of prog, nil if none
 	fn       *btf.Func
 	jitedLen uint32 // length of the jited function
 	funcIP   uintptr
@@ -185,12 +187,19 @@ func (p *bpfProgs) addTracing(id ebpf.ProgramID, funcName string, prog *ebpf.Pro
 
 		p.progs[id] = prog
 		p.infos[id] = info
+
+		if !p.disasm {
+			arena, err := progArena(id, info)
+			WarnLogIf(err != nil, "Not reading arena memory of prog %d: %v", id, err)
+			p.arenas[id] = arena
+		}
 	} else {
 		prog = prev
 	}
 
 	p.tracings[key] = &bpfTracingInfo{
 		prog:     prog,
+		arena:    p.arenas[id],
 		fn:       fns[idx].Func,
 		jitedLen: jitedLens[idx],
 		funcIP:   jitedKsymAddrs[idx],

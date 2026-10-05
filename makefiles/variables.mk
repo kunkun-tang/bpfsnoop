@@ -74,7 +74,7 @@ define gen_bpf2go_vars3
 	MAP_OBJ_TO_SRC__$(obj) := $(src)
 endef
 
-BPF2GO_MAP := Bpfsnoop Read Traceable Tracepoint Tracepoint_module Tailcall \
+BPF2GO_MAP := Bpfsnoop Read Traceable Tracepoint Tracepoint_module Tailcall Arena \
 	Feat=feature Graph=bpfsnoop_fgraph Insn=bpfsnoop_insn Kmulti=bpfsnoop_kmulti
 
 $(foreach ent,$(BPF2GO_MAP),\
