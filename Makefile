@@ -65,9 +65,9 @@ local_release: $(BPFSNOOP_OBJ)
 
 .PHONY: clean
 clean:
-	rm -f $(BPF_OBJ) $(XDPCRC_BPF_OBJ) $(VMLINUX_OBJ)
+	rm -f $(BPF_OBJ) $(XDPCRC_BPF_OBJ) $(ARENAPROBE_BPF_OBJ) $(VMLINUX_OBJ)
 	rm -f $(BPF_GO_SRC) $(BPF_GO_DEP)
-	rm -f $(BPFSNOOP_OBJ) $(XDPCRC_OBJ) $(LOCALTEST_OBJ)
+	rm -f $(BPFSNOOP_OBJ) $(XDPCRC_OBJ) $(ARENAPROBE_OBJ) $(LOCALTEST_OBJ)
 	rm -rf $(DIR_BIN)/*
 	@touch $(DIR_BIN)/.gitkeep
 
@@ -92,7 +92,7 @@ testcc:
 	@go clean -testcache
 
 .PHONY: fixup
-fixup: $(BPF_GO_SRC) $(XDPCRC_OBJ)
+fixup: $(BPF_GO_SRC) $(XDPCRC_OBJ) $(ARENAPROBE_OBJ)
 	$(GOBUILD_CGO_CFLAGS) $(GOBUILD_CGO_LDFLAGS) go fix ./...
 	@echo "gofumpt -w .go files..."
 	@gofumpt -w $(GO_SRC)
@@ -105,8 +105,13 @@ $(XDPCRC_OBJ): $(XDPCRC_SRC) $(VMLINUX_OBJ)
 		$(GO_RUN_BPF2GO) -go-package main xdp ./xdp.c -- $(BPF2GO_EXTRA_FLAGS)
 	$(GOBUILD) -o $(XDPCRC_OBJ) $(XDPCRC_DIR)
 
+$(ARENAPROBE_OBJ): $(ARENAPROBE_SRC) $(VMLINUX_OBJ)
+	cd ./cmd/arenaprobe && \
+		$(GO_RUN_BPF2GO) -go-package main arena ./arena.c -- $(BPF2GO_EXTRA_FLAGS)
+	$(GOBUILD) -o $(ARENAPROBE_OBJ) $(ARENAPROBE_DIR)
+
 .PHONY: testlocal
-testlocal: $(BPFSNOOP_OBJ) $(LOCALTEST_OBJ) $(XDPCRC_OBJ)
+testlocal: $(BPFSNOOP_OBJ) $(LOCALTEST_OBJ) $(XDPCRC_OBJ) $(ARENAPROBE_OBJ)
 	@$(CMD_IP) link set dev lo up
 	./$(LOCALTEST_OBJ) --test-dir ./t
 	./$(LOCALTEST_OBJ) --test-dir ./t/cc
@@ -119,5 +124,5 @@ testmcp: $(BPFSNOOP_OBJ) $(LOCALTEST_OBJ) $(XDPCRC_OBJ)
 	./$(LOCALTEST_OBJ) --mcp --test-dir ./t/mcp
 
 .PHONY: sudo
-sudo: $(BPFSNOOP_OBJ) $(LOCALTEST_OBJ) $(XDPCRC_OBJ)
-	@sh scripts/sudo.sh "$(abspath $(BPFSNOOP_OBJ))" "$(abspath $(XDPCRC_OBJ))" "$(abspath $(LOCALTEST_OBJ))"
+sudo: $(BPFSNOOP_OBJ) $(LOCALTEST_OBJ) $(XDPCRC_OBJ) $(ARENAPROBE_OBJ)
+	@sh scripts/sudo.sh "$(abspath $(BPFSNOOP_OBJ))" "$(abspath $(XDPCRC_OBJ))" "$(abspath $(ARENAPROBE_OBJ))" "$(abspath $(LOCALTEST_OBJ))"
