@@ -12,12 +12,14 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/link"
 
 	"github.com/bpfsnoop/bpfsnoop/internal/bpf"
+	"github.com/bpfsnoop/bpfsnoop/internal/btfx"
 	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 )
 
@@ -187,4 +189,14 @@ func withArenaParams(arena *cc.ArenaInfo, fn *btf.Func) *cc.ArenaInfo {
 		}
 	}
 	return &a
+}
+
+// markArenaPointer marks the pointer type of a value repr as __arena, e.g.
+// "(struct node *)n=0x7f..." becomes "(struct node __arena *)n=0x7f...".
+func markArenaPointer(s string, typ btf.Type) string {
+	t := btfx.Repr(typ)
+	if !strings.HasSuffix(t, "*") {
+		return s
+	}
+	return strings.Replace(s, "("+t+")", "("+strings.TrimSuffix(t, "*")+"__arena *)", 1)
 }
