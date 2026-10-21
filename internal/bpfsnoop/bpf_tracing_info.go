@@ -32,7 +32,7 @@ func getFuncParams(fn *btf.Func) ([]FuncParamFlags, FuncParamFlags, error) {
 	fnParams := fn.Type.(*btf.FuncProto).Params
 	params := make([]FuncParamFlags, 0, len(fnParams))
 	ret := FuncParamFlags{}
-	for _, p := range fnParams {
+	for i, p := range fnParams {
 		v := mybtf.IsConstCharPtr(p.Type)
 		isStr := v && !strUsed
 		strUsed = strUsed || v
@@ -59,6 +59,7 @@ func getFuncParams(fn *btf.Func) ([]FuncParamFlags, FuncParamFlags, error) {
 			ParamFlags: ParamFlags{
 				IsNumberPtr: btfx.IsNumberPointer(p.Type),
 				IsStr:       isStr,
+				IsArena:     isArenaParam(fn, i),
 			},
 		})
 	}

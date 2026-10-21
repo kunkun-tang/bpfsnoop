@@ -11,8 +11,10 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"slices"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/link"
 
 	"github.com/bpfsnoop/bpfsnoop/internal/bpf"
@@ -158,4 +160,31 @@ func checkArenaKernStart(info *ebpf.ProgramInfo, kernStart uint64) error {
 	}
 
 	return nil
+}
+
+// argArenaTag is the BTF decl tag of a func param that points into an arena,
+// which __arg_arena adds.
+const argArenaTag = "arg:arena"
+
+// isArenaParam reports whether the i-th param of fn is tagged __arg_arena.
+func isArenaParam(fn *btf.Func, i int) bool {
+	return fn != nil && i < len(fn.ParamTags) && slices.Contains(fn.ParamTags[i], argArenaTag)
+}
+
+// withArenaParams returns a copy of arena for tracing fn, with the params of fn
+// that point into the arena. They're known by their __arg_arena tag: arena
+// pointers lack the address space in BTF.
+func withArenaParams(arena *cc.ArenaInfo, fn *btf.Func) *cc.ArenaInfo {
+	if arena == nil {
+		return nil
+	}
+
+	a := *arena
+	a.Params = nil
+	for i, p := range fn.Type.(*btf.FuncProto).Params {
+		if isArenaParam(fn, i) {
+			a.Params = append(a.Params, p.Name)
+		}
+	}
+	return &a
 }
