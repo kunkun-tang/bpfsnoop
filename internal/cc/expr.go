@@ -43,6 +43,10 @@ type CompileExprOptions struct {
 
 	MemoryReadMode MemoryReadMode
 	MemoryReadFlag MemoryReadFlag
+
+	// Arena of the traced prog, if any. Addresses in its user range are
+	// translated to its kernel mapping before reading memory.
+	Arena *ArenaInfo
 }
 
 func CompileFilterExpr(opts CompileExprOptions) (asm.Instructions, error) {
@@ -145,6 +149,10 @@ type EvalResult struct {
 	Int   string // number type, e.g. "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "le16", "le32", "le64", "be16", "be32" and "be64"
 
 	LabelUsed bool
+
+	// Arena is set if Reg holds an address in the arena, which has to be
+	// translated before reading memory at it, see ArenaTranslate().
+	Arena bool
 }
 
 func CompileEvalExpr(opts CompileExprOptions) (EvalResult, error) {
@@ -211,6 +219,8 @@ func CompileEvalExpr(opts CompileExprOptions) (EvalResult, error) {
 	if val.isConstant() && (opts.MemoryReadFlag&MemoryReadFlagForce) == 0 {
 		return res, fmt.Errorf("disallow constant value (%d) expression: '%s'", val.num, opts.Expr)
 	}
+
+	res.Arena = c.isArenaAddr(val)
 
 	// Materialize if needed
 	if !val.isConstant() {
