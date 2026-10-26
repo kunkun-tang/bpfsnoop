@@ -5,6 +5,7 @@ package cc
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -250,5 +251,201 @@ func TestCompileArena(t *testing.T) {
 		test.AssertNoErr(t, err)
 		test.AssertEqual(t, insns[1].IsLoadFromMap(), true)
 		test.AssertEqual(t, insns[1].Constant, int64(4))
+	})
+}
+
+func testTracedArena() *ArenaInfo {
+	return &ArenaInfo{
+		FD:        7,
+		Params:    []string{"node"},
+		kernVM:    264,
+		vmAddr:    8,
+		guardHalf: 32768,
+	}
+}
+
+func arenaTranslateInsns(reg, tmp asm.Register, arena *ArenaInfo) asm.Instructions {
+	return asm.Instructions{
+		JmpOff(asm.JEq, reg, 0, 7),
+		asm.Mov.Reg32(reg, reg),
+		asm.LoadMapPtr(tmp, arena.FD),
+		asm.LoadMem(tmp, tmp, arena.kernVM, asm.DWord),
+		asm.LoadMem(tmp, tmp, arena.vmAddr, asm.DWord),
+		asm.Add.Reg(reg, tmp),
+		asm.Add.Imm(reg, arena.guardHalf),
+	}
+}
+
+// addArenaNode adds var node, an __arg_arena param pointing to
+//
+//	struct arena_node { int val; struct arena_node *next; struct task_struct *task; };
+func addArenaNode(t *testing.T, c *compiler) {
+	t.Helper()
+
+	intTyp, err := testBtf.AnyTypeByName("int")
+	test.AssertNoErr(t, err)
+	taskTyp, err := testBtf.AnyTypeByName("task_struct")
+	test.AssertNoErr(t, err)
+
+	node := &btf.Struct{Name: "arena_node", Size: 24}
+	node.Members = []btf.Member{
+		{Name: "val", Type: intTyp},
+		{Name: "next", Type: &btf.Pointer{Target: node}, Offset: 64},
+		{Name: "task", Type: &btf.Pointer{Target: taskTyp}, Offset: 128},
+	}
+	c.vars = append(c.vars, "node")
+	c.btfs = append(c.btfs, &btf.Pointer{Target: node})
+}
+
+// translations returns the indexes of the arena translations in insns, by
+// their load of the arena map pointer.
+func translations(insns asm.Instructions, arena *ArenaInfo) []int {
+	var idx []int
+	for i, ins := range insns {
+		if ins.IsLoadFromMap() && ins.Constant == int64(arena.FD) {
+			idx = append(idx, i)
+		}
+	}
+	return idx
+}
+
+func TestNewArenaInfo(t *testing.T) {
+	arena, err := NewArenaInfo(7, testArenaKernel(nil))
+	test.AssertNoErr(t, err)
+	test.AssertEqual(t, arena.FD, 7)
+	test.AssertEqual(t, arena.kernVM, int16(264))
+	test.AssertEqual(t, arena.vmAddr, int16(8))
+	test.AssertEqual(t, arena.guardHalf, int32(arenaGuardSize(os.Getpagesize())/2))
+
+	_, err = NewArenaInfo(7, testBtf)
+	test.AssertErrContains(t, err, "failed to find struct bpf_arena")
+}
+
+func TestArenaTranslate(t *testing.T) {
+	arena := testTracedArena()
+
+	t.Run("no arena", func(t *testing.T) {
+		test.AssertEmptySlice(t, ArenaTranslate(r3, asm.R2, nil))
+	})
+
+	t.Run("r3", func(t *testing.T) {
+		test.AssertEqualSlice(t, ArenaTranslate(r3, asm.R2, arena), arenaTranslateInsns(r3, asm.R2, arena))
+	})
+
+	t.Run("null is kept", func(t *testing.T) {
+		slots := 0
+		insns := ArenaTranslate(r3, asm.R2, arena)
+		for _, ins := range insns[1:] {
+			slots += int(ins.Size() / asm.InstructionSize)
+		}
+		// The NULL check skips to the end of the translation.
+		test.AssertEqual(t, insns[0].Offset, int16(slots))
+	})
+}
+
+func TestArenaReads(t *testing.T) {
+	arena := testTracedArena()
+
+	for _, tt := range []struct {
+		name  string
+		expr  string
+		core  bool
+		reads int // translations
+	}{
+		{name: "arena param", expr: "node->val", reads: 1},
+		{name: "address in the arena", expr: "&node->next"},
+		{name: "only the first read", expr: "node->next->val", reads: 1},
+		{name: "kernel pointer stored in the arena", expr: "node->task->pid", reads: 1},
+		{name: "kernel pointer stored in the arena, core read", expr: "node->task->pid", core: true, reads: 1},
+		{name: "not an arena param", expr: "skb->dev->ifindex"},
+		{name: "not an arena param, core read", expr: "skb->dev->ifindex", core: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := prepareCompiler(t)
+			if tt.core {
+				c = prepareCompilerCoreRead(t)
+			}
+			c.arena = arena
+			addArenaNode(t, c)
+
+			_, err := c.materialize(prepareExprVal(t, c, tt.expr))
+			test.AssertNoErr(t, err)
+
+			idx := translations(c.insns, arena)
+			test.AssertEqual(t, len(idx), tt.reads)
+			if tt.reads != 0 {
+				// The translation comes before the first read.
+				first := slices.IndexFunc(c.insns, func(ins asm.Instruction) bool { return ins.IsBuiltinCall() })
+				test.AssertTrue(t, idx[0] < first)
+			}
+		})
+	}
+
+	t.Run("core read of a program-local struct", func(t *testing.T) {
+		c := prepareCompilerCoreRead(t)
+		c.arena = arena
+		addArenaNode(t, c)
+
+		_, err := c.materialize(prepareExprVal(t, c, "node->val"))
+		test.AssertNoErr(t, err)
+		test.AssertEqualSlice(t, c.insns, append(append(asm.Instructions{
+			asm.LoadMem(r8, argsReg, 48, dword), // node
+			asm.Mov.Reg(r1, r8),
+			asm.Mov.Reg(r3, r1),
+		}, arenaTranslateInsns(r3, asm.R2, arena)...),
+			asm.Mov.Imm(r2, 8),
+			asm.Mov.Reg(r1, rfp),
+			asm.Add.Imm(r1, -8),
+			asm.FnProbeReadKernel.Call(),
+			asm.LoadMem(r8, rfp, -8, dword), // node->val
+			asm.LSh.Imm(r8, 32),
+			asm.ArSh.Imm(r8, 32),
+		))
+	})
+
+	t.Run("eval result", func(t *testing.T) {
+		c := prepareCompiler(t)
+		addArenaNode(t, c)
+		params := []btf.FuncParam{
+			{Name: "skb", Type: getSkbBtf(t)},
+			{Name: "node", Type: c.btfs[len(c.btfs)-1]},
+		}
+
+		for _, tt := range []struct {
+			expr  string
+			arena bool // the result is an address in the arena
+		}{
+			{expr: "node", arena: true},
+			{expr: "*node", arena: true},
+			{expr: "node->next"},
+			{expr: "*node->next"},
+			{expr: "skb->dev"},
+		} {
+			res, err := CompileEvalExpr(CompileExprOptions{
+				Expr: tt.expr, Params: params, Spec: testBtf, Kernel: testBtf,
+				LabelExit: "__label_exit", Arena: arena,
+			})
+			test.AssertNoErr(t, err)
+			test.AssertEqual(t, res.Arena, tt.arena)
+		}
+	})
+
+	t.Run("filter expr", func(t *testing.T) {
+		c := prepareCompiler(t)
+		addArenaNode(t, c)
+
+		insns, err := CompileFilterExpr(CompileExprOptions{
+			Expr:      "node->next->val == 2 && skb->len == 0",
+			LabelExit: "__label_exit",
+			Spec:      testBtf,
+			Kernel:    testBtf,
+			Params: []btf.FuncParam{
+				{Name: "skb", Type: getSkbBtf(t)},
+				{Name: "node", Type: c.btfs[len(c.btfs)-1]},
+			},
+			Arena: arena,
+		})
+		test.AssertNoErr(t, err)
+		test.AssertEqual(t, len(translations(insns, arena)), 1) // node->next
 	})
 }

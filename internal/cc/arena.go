@@ -6,6 +6,7 @@ package cc
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/Asphaltt/mybtf"
 	"github.com/cilium/ebpf"
@@ -34,11 +35,11 @@ type arenaOffsets struct {
 	vmAddr      int16 // struct vm_struct, addr
 }
 
-func (c *compiler) arenaStructOffsets() (arenaOffsets, error) {
+func arenaStructOffsets(krnl btfSpecer) (arenaOffsets, error) {
 	var offs arenaOffsets
 
 	offset := func(structName, member string) (int16, error) {
-		typ, err := c.krnlSpec.AnyTypeByName(structName)
+		typ, err := krnl.AnyTypeByName(structName)
 		if err != nil {
 			return 0, fmt.Errorf("failed to find struct %s: %w", structName, err)
 		}
@@ -113,7 +114,7 @@ func (c *compiler) evaluateArenaCall(expr *cc.Expr) (exprValue, error) {
 			arenaFn, mapID, size, offset, arenaSize)
 	}
 
-	offs, err := c.arenaStructOffsets()
+	offs, err := arenaStructOffsets(c.krnlSpec)
 	if err != nil {
 		return exprValue{}, fmt.Errorf("%s(%s): %w", arenaFn, mapID, err)
 	}
@@ -156,4 +157,92 @@ func (c *compiler) evaluateArenaCall(expr *cc.Expr) (exprValue, error) {
 		Type:   &btf.Int{Name: "u8", Size: 1},
 		Nelems: uint32(size),
 	}), nil
+}
+
+// ArenaInfo describes the BPF arena of a traced bpf prog, see
+// ArenaTranslate().
+type ArenaInfo struct {
+	// FD is the arena map, which the compiled insns reference. The caller
+	// keeps it open until they've been loaded.
+	FD int
+
+	// Params are the params of the traced func that point into the arena,
+	// i.e. that are tagged __arg_arena.
+	Params []string
+
+	kernVM    int16 // offset of kern_vm in struct bpf_arena
+	vmAddr    int16 // offset of addr in struct vm_struct
+	guardHalf int32 // GUARD_SZ/2
+}
+
+// NewArenaInfo returns the ArenaInfo of the arena map fd, with the offsets of
+// the fields of struct bpf_arena from kernel BTF.
+func NewArenaInfo(fd int, krnl btfSpecer) (*ArenaInfo, error) {
+	offs, err := arenaStructOffsets(krnl)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ArenaInfo{
+		FD:        fd,
+		kernVM:    offs.kernVM,
+		vmAddr:    offs.vmAddr,
+		guardHalf: int32(arenaGuardSize(os.Getpagesize()) / 2),
+	}, nil
+}
+
+// isParam reports whether param name points into the arena.
+func (a *ArenaInfo) isParam(name string) bool {
+	return a != nil && slices.Contains(a.Params, name)
+}
+
+// ArenaTranslate returns insns that translate the arena address in reg to the
+// arena's kernel mapping, which bpf_probe_read_kernel() can read:
+//
+//	kern_vm->addr + GUARD_SZ/2 + (u32)addr
+//
+// That's where the kernel maps the page of user address addr, see
+// arena_vm_fault(). kern_vm is read from the arena's struct bpf_arena through
+// the map pointer at run time. NULL is kept as is. tmp is clobbered.
+func ArenaTranslate(reg, tmp asm.Register, arena *ArenaInfo) asm.Instructions {
+	if arena == nil {
+		return nil
+	}
+
+	// Jump offsets count instruction slots, and ld_imm64 takes two.
+	return asm.Instructions{
+		JmpOff(asm.JEq, reg, 0, 7),
+		asm.Mov.Reg32(reg, reg), // the arena offset, (u32)addr
+		asm.LoadMapPtr(tmp, arena.FD),
+		asm.LoadMem(tmp, tmp, arena.kernVM, asm.DWord),
+		asm.LoadMem(tmp, tmp, arena.vmAddr, asm.DWord),
+		asm.Add.Reg(reg, tmp),
+		asm.Add.Imm(reg, arena.guardHalf),
+	}
+}
+
+// isArenaBase reports whether val is based on a param that points into the
+// arena, see ArenaInfo.Params.
+func (c *compiler) isArenaBase(val exprValue) bool {
+	return val.isPending() && val.varIndex >= 0 && val.varIndex < len(c.vars) && c.arena.isParam(c.vars[val.varIndex])
+}
+
+// isArenaAddr reports whether val is an address in the arena: based on an
+// arena param, without a deref on the way.
+func (c *compiler) isArenaAddr(val exprValue) bool {
+	return c.isArenaBase(val) && !slices.ContainsFunc(val.offsets, func(o pendingOffset) bool { return o.deref })
+}
+
+// markArenaDeref marks the first deref of the offsets of an arena param to
+// translate its address. A pointer loaded from the arena isn't translated, as
+// its origin isn't known: it may as well be a kernel pointer.
+func markArenaDeref(offsets []pendingOffset) []pendingOffset {
+	i := slices.IndexFunc(offsets, func(o pendingOffset) bool { return o.deref })
+	if i == -1 {
+		return offsets
+	}
+
+	offsets = slices.Clone(offsets)
+	offsets[i].arena = true
+	return offsets
 }
