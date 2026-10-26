@@ -19,6 +19,7 @@ import (
 	"github.com/bpfsnoop/bpfsnoop/internal/assert"
 	"github.com/bpfsnoop/bpfsnoop/internal/atomix"
 	"github.com/bpfsnoop/bpfsnoop/internal/bpf"
+	"github.com/bpfsnoop/bpfsnoop/internal/cc"
 	"github.com/bpfsnoop/bpfsnoop/internal/mathx"
 )
 
@@ -192,6 +193,7 @@ func (t *bpfTracing) traceKfuncMultiMode(reusedMaps map[string]*ebpf.Map, g *kfu
 
 	tracingFuncName := "bpfsnoop_kmulti"
 	progSpec := spec.Programs[tracingFuncName]
+	var strLits cc.StrLits
 	funcProto := fn.Func.Type.(*btf.FuncProto)
 	params := funcProto.Params
 	if isExit {
@@ -208,10 +210,10 @@ func (t *bpfTracing) traceKfuncMultiMode(reusedMaps map[string]*ebpf.Map, g *kfu
 		if _, err := t.injectPktFilter(progSpec, params, fn.Func.Name, false, false); err != nil {
 			return err
 		}
-		if err := t.injectArgFilter(progSpec, params, nil, fn.Btf, fn.Func.Name, filterMatch, true); err != nil {
+		if err := t.injectArgFilter(progSpec, params, nil, fn.Btf, fn.Func.Name, filterMatch, true, &strLits); err != nil {
 			return err
 		}
-		args, argDataSize, err := t.injectArgOutput(progSpec, params, nil, fn.Btf, fn.Func.Name, false)
+		args, argDataSize, err := t.injectArgOutput(progSpec, params, nil, fn.Btf, fn.Func.Name, false, &strLits)
 		if err != nil {
 			return err
 		}
@@ -225,6 +227,10 @@ func (t *bpfTracing) traceKfuncMultiMode(reusedMaps map[string]*ebpf.Map, g *kfu
 			f.Flag = fn.Flag
 			f.Flag.funcName = f.Ksym.name
 		}
+	}
+
+	if err := injectStrLits(spec, progSpec, &strLits); err != nil {
+		return err
 	}
 
 	withRet := sessionMode || isExit

@@ -43,6 +43,10 @@ type CompileExprOptions struct {
 
 	MemoryReadMode MemoryReadMode
 	MemoryReadFlag MemoryReadFlag
+
+	// StrLits collects the literals of str() comparisons, for the bpf prog
+	// to have them. str() can't be compared without it.
+	StrLits *StrLits
 }
 
 func CompileFilterExpr(opts CompileExprOptions) (asm.Instructions, error) {

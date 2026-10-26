@@ -254,7 +254,7 @@ func (arg *funcArgumentOutput) genDefaultInsns(res *cc.EvalResult, offset, size 
 	return offset, nil
 }
 
-func (arg *funcArgumentOutput) compile(params []btf.FuncParam, ret btf.Type, krnl, spec *btf.Spec, offset, flags int, labelExit string) (int, error) {
+func (arg *funcArgumentOutput) compile(params []btf.FuncParam, ret btf.Type, krnl, spec *btf.Spec, offset, flags int, labelExit string, strLits *cc.StrLits) (int, error) {
 	mode := cc.MemoryReadModeProbeRead
 	if _, err := spec.AnyTypeByName("bpf_rdonly_cast"); err == nil {
 		mode = cc.MemoryReadModeCoreRead
@@ -273,6 +273,7 @@ func (arg *funcArgumentOutput) compile(params []btf.FuncParam, ret btf.Type, krn
 		ReservedStack: argOutputStackOff,
 		UsedRegisters: []asm.Register{outputArgRegBuff, outputArgRegArgs},
 		Maps:          arg.maps,
+		StrLits:       strLits,
 
 		MemoryReadMode: mode,
 		MemoryReadFlag: cc.MemoryReadFlag(flags),
@@ -368,7 +369,7 @@ func (arg *argDataOutput) genExitLabel() string {
 	return label
 }
 
-func (arg *argDataOutput) matchParams(params []btf.FuncParam, ret btf.Type, spec *btf.Spec, allowRetval bool) ([]funcArgumentOutput, int, error) {
+func (arg *argDataOutput) matchParams(params []btf.FuncParam, ret btf.Type, spec *btf.Spec, allowRetval bool, strLits *cc.StrLits) ([]funcArgumentOutput, int, error) {
 	args := make([]funcArgumentOutput, 0, 12)
 
 	krnl := getKernelBTF()
@@ -392,7 +393,7 @@ func (arg *argDataOutput) matchParams(params []btf.FuncParam, ret btf.Type, spec
 
 		a := a
 		var err error
-		offset, err = a.compile(params, ret, krnl, spec, offset, 0, arg.genExitLabel())
+		offset, err = a.compile(params, ret, krnl, spec, offset, 0, arg.genExitLabel(), strLits)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to compile expr '%s': %w", a.expr, err)
 		}

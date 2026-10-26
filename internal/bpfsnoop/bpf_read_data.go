@@ -81,7 +81,8 @@ func readKernelData(expr string, helpers *Helpers) (kernelReadOutput, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	readSize, err := arg.compile(nil, nil, krnl, krnl, 0, int(cc.MemoryReadFlagForce), "__read_data_fail")
+	var strLits cc.StrLits
+	readSize, err := arg.compile(nil, nil, krnl, krnl, 0, int(cc.MemoryReadFlagForce), "__read_data_fail", &strLits)
 	if err != nil {
 		return kernelReadOutput{}, fmt.Errorf("failed to compile expression %q: %w", expr, err)
 	}
@@ -108,8 +109,18 @@ func readKernelData(expr string, helpers *Helpers) (kernelReadOutput, error) {
 		return kernelReadOutput{}, fmt.Errorf("failed to update target_pid_tgid: %w", err)
 	}
 
+	// Only bpfsnoop_str_eq() reads the config here.
+	var cfg BpfsnoopConfig
+	cfg.SetHasStrncmp(hasStrncmp)
+	if err := spec.Variables["bpfsnoop_config"].Set(cfg); err != nil {
+		return kernelReadOutput{}, fmt.Errorf("failed to set bpfsnoop config: %w", err)
+	}
+
 	progSpec := spec.Programs["read_data"]
 	injectInsns(progSpec, stubReadData, insns)
+	if err := injectStrLits(spec, progSpec, &strLits); err != nil {
+		return kernelReadOutput{}, err
+	}
 
 	progSpec.AttachTo = bpfFentryTest1
 	coll, err := ebpf.NewCollection(spec)
