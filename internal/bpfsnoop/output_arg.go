@@ -129,7 +129,7 @@ func (arg *funcArgumentOutput) genDerefInsns(res *cc.EvalResult, offset, size in
 		)
 	}
 	if res.Arena {
-		arg.emit(cc.ArenaTranslate(asm.R3, asm.R2, arg.arena)...)
+		arg.emit(cc.ArenaTranslate(arg.arena)...)
 	}
 
 	if offset != 0 {
@@ -169,7 +169,7 @@ func (arg *funcArgumentOutput) genBufInsns(res *cc.EvalResult, offset, size int,
 		)
 	}
 	if res.Arena {
-		arg.emit(cc.ArenaTranslate(asm.R3, asm.R2, arg.arena)...)
+		arg.emit(cc.ArenaTranslate(arg.arena)...)
 	}
 
 	probeReadFn := asm.FnProbeReadKernel
@@ -214,7 +214,7 @@ func (arg *funcArgumentOutput) genDefaultInsns(res *cc.EvalResult, offset, size 
 			// Before the null check, whose offset counts the insns below.
 			// The translation keeps 0 as is.
 			if res.Arena {
-				arg.emit(cc.ArenaTranslate(asm.R3, asm.R2, arg.arena)...)
+				arg.emit(cc.ArenaTranslate(arg.arena)...)
 			}
 
 			arg.emit(
@@ -247,7 +247,7 @@ func (arg *funcArgumentOutput) genDefaultInsns(res *cc.EvalResult, offset, size 
 			)
 		}
 		if res.Arena {
-			arg.emit(cc.ArenaTranslate(asm.R3, asm.R2, arg.arena)...)
+			arg.emit(cc.ArenaTranslate(arg.arena)...)
 		}
 		if offset != 0 {
 			arg.emit(

@@ -66,7 +66,7 @@ func (c *compiler) coreReadByProbeRead(offset int64, reg asm.Register, lastIdx, 
 	}
 	c.emit(asm.Mov.Reg(asm.R3, immReg)) // r3 = r1
 	if arena {
-		c.emit(ArenaTranslate(asm.R3, asm.R2, c.arena)...)
+		c.emit(ArenaTranslate(c.arena)...)
 	}
 	c.emit(
 		asm.Mov.Imm(asm.R2, 8),       // r2 = 8

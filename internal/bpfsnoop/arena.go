@@ -4,7 +4,6 @@
 package bpfsnoop
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -61,12 +60,7 @@ func (p *bpfProgs) progArena(id ebpf.ProgramID) (*cc.ArenaInfo, error) {
 		return nil, err
 	}
 
-	arena, err := cc.NewArenaInfo(m.FD(), getKernelBTF())
-	if err != nil {
-		_ = m.Close()
-		return nil, fmt.Errorf("failed to prepare arena: %w", err)
-	}
-
+	arena := cc.NewArenaInfo(m.FD())
 	p.arenaMaps = append(p.arenaMaps, m)
 	p.arenas[id] = arena
 

@@ -170,25 +170,15 @@ type ArenaInfo struct {
 	// i.e. that are tagged __arg_arena.
 	Params []string
 
-	kernVM    int16 // offset of kern_vm in struct bpf_arena
-	vmAddr    int16 // offset of addr in struct vm_struct
 	guardHalf int32 // GUARD_SZ/2
 }
 
-// NewArenaInfo returns the ArenaInfo of the arena map fd, with the offsets of
-// the fields of struct bpf_arena from kernel BTF.
-func NewArenaInfo(fd int, krnl btfSpecer) (*ArenaInfo, error) {
-	offs, err := arenaStructOffsets(krnl)
-	if err != nil {
-		return nil, err
-	}
-
+// NewArenaInfo returns the ArenaInfo of the arena map fd.
+func NewArenaInfo(fd int) *ArenaInfo {
 	return &ArenaInfo{
 		FD:        fd,
-		kernVM:    offs.kernVM,
-		vmAddr:    offs.vmAddr,
 		guardHalf: int32(arenaGuardSize(os.Getpagesize()) / 2),
-	}, nil
+	}
 }
 
 // isParam reports whether param name points into the arena.
@@ -196,28 +186,25 @@ func (a *ArenaInfo) isParam(name string) bool {
 	return a != nil && slices.Contains(a.Params, name)
 }
 
-// ArenaTranslate returns insns that translate the arena address in reg to the
-// arena's kernel mapping, which bpf_probe_read_kernel() can read:
-//
-//	kern_vm->addr + GUARD_SZ/2 + (u32)addr
-//
-// That's where the kernel maps the page of user address addr, see
-// arena_vm_fault(). kern_vm is read from the arena's struct bpf_arena through
-// the map pointer at run time. NULL is kept as is. tmp is clobbered.
-func ArenaTranslate(reg, tmp asm.Register, arena *ArenaInfo) asm.Instructions {
+// ArenaAddrFunc is the C func in bpf/bpfsnoop_arena.h that translates an
+// arena address to the arena's kernel mapping.
+const ArenaAddrFunc = "bpfsnoop_arena_addr"
+
+// ArenaTranslate returns insns that translate the arena address in R3 to the
+// arena's kernel mapping, which bpf_probe_read_kernel() can read, by calling
+// bpfsnoop_arena_addr() in bpf/bpfsnoop_arena.h. Like the
+// bpf_probe_read_kernel() call that follows them, they clobber R0-R5.
+func ArenaTranslate(arena *ArenaInfo) asm.Instructions {
 	if arena == nil {
 		return nil
 	}
 
-	// Jump offsets count instruction slots, and ld_imm64 takes two.
 	return asm.Instructions{
-		JmpOff(asm.JEq, reg, 0, 7),
-		asm.Mov.Reg32(reg, reg), // the arena offset, (u32)addr
-		asm.LoadMapPtr(tmp, arena.FD),
-		asm.LoadMem(tmp, tmp, arena.kernVM, asm.DWord),
-		asm.LoadMem(tmp, tmp, arena.vmAddr, asm.DWord),
-		asm.Add.Reg(reg, tmp),
-		asm.Add.Imm(reg, arena.guardHalf),
+		asm.Mov.Reg(asm.R2, asm.R3),
+		asm.LoadMapPtr(asm.R1, arena.FD),
+		asm.Mov.Imm(asm.R3, arena.guardHalf),
+		asm.Call.Label(ArenaAddrFunc),
+		asm.Mov.Reg(asm.R3, asm.R0),
 	}
 }
 

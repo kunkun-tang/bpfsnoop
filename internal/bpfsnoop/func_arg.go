@@ -56,7 +56,7 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 
 			if prm.IsNumberPtr {
 				if prm.IsArena {
-					insns = append(insns, cc.ArenaTranslate(regArg, asm.R2, arena)...)
+					insns = append(insns, cc.ArenaTranslate(arena)...)
 				}
 				insns = append(
 					insns,
@@ -71,7 +71,7 @@ func genOutputFuncArgs(prog *ebpf.ProgramSpec, prms []FuncParamFlags, ret FuncPa
 			}
 		} else /* IsStr */ {
 			if prm.IsArena {
-				insns = append(insns, cc.ArenaTranslate(regArg, asm.R2, arena)...)
+				insns = append(insns, cc.ArenaTranslate(arena)...)
 			}
 			if offset != 0 {
 				insns = append(

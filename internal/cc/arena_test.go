@@ -258,21 +258,17 @@ func testTracedArena() *ArenaInfo {
 	return &ArenaInfo{
 		FD:        7,
 		Params:    []string{"node"},
-		kernVM:    264,
-		vmAddr:    8,
 		guardHalf: 32768,
 	}
 }
 
-func arenaTranslateInsns(reg, tmp asm.Register, arena *ArenaInfo) asm.Instructions {
+func arenaTranslateInsns(arena *ArenaInfo) asm.Instructions {
 	return asm.Instructions{
-		JmpOff(asm.JEq, reg, 0, 7),
-		asm.Mov.Reg32(reg, reg),
-		asm.LoadMapPtr(tmp, arena.FD),
-		asm.LoadMem(tmp, tmp, arena.kernVM, asm.DWord),
-		asm.LoadMem(tmp, tmp, arena.vmAddr, asm.DWord),
-		asm.Add.Reg(reg, tmp),
-		asm.Add.Imm(reg, arena.guardHalf),
+		asm.Mov.Reg(asm.R2, asm.R3),
+		asm.LoadMapPtr(asm.R1, arena.FD),
+		asm.Mov.Imm(asm.R3, arena.guardHalf),
+		asm.Call.Label(ArenaAddrFunc),
+		asm.Mov.Reg(asm.R3, asm.R0),
 	}
 }
 
@@ -310,36 +306,19 @@ func translations(insns asm.Instructions, arena *ArenaInfo) []int {
 }
 
 func TestNewArenaInfo(t *testing.T) {
-	arena, err := NewArenaInfo(7, testArenaKernel(nil))
-	test.AssertNoErr(t, err)
+	arena := NewArenaInfo(7)
 	test.AssertEqual(t, arena.FD, 7)
-	test.AssertEqual(t, arena.kernVM, int16(264))
-	test.AssertEqual(t, arena.vmAddr, int16(8))
 	test.AssertEqual(t, arena.guardHalf, int32(arenaGuardSize(os.Getpagesize())/2))
-
-	_, err = NewArenaInfo(7, testBtf)
-	test.AssertErrContains(t, err, "failed to find struct bpf_arena")
 }
 
 func TestArenaTranslate(t *testing.T) {
-	arena := testTracedArena()
-
 	t.Run("no arena", func(t *testing.T) {
-		test.AssertEmptySlice(t, ArenaTranslate(r3, asm.R2, nil))
+		test.AssertEmptySlice(t, ArenaTranslate(nil))
 	})
 
-	t.Run("r3", func(t *testing.T) {
-		test.AssertEqualSlice(t, ArenaTranslate(r3, asm.R2, arena), arenaTranslateInsns(r3, asm.R2, arena))
-	})
-
-	t.Run("null is kept", func(t *testing.T) {
-		slots := 0
-		insns := ArenaTranslate(r3, asm.R2, arena)
-		for _, ins := range insns[1:] {
-			slots += int(ins.Size() / asm.InstructionSize)
-		}
-		// The NULL check skips to the end of the translation.
-		test.AssertEqual(t, insns[0].Offset, int16(slots))
+	t.Run("arena", func(t *testing.T) {
+		arena := testTracedArena()
+		test.AssertEqualSlice(t, ArenaTranslate(arena), arenaTranslateInsns(arena))
 	})
 }
 
@@ -392,7 +371,7 @@ func TestArenaReads(t *testing.T) {
 			asm.LoadMem(r8, argsReg, 48, dword), // node
 			asm.Mov.Reg(r1, r8),
 			asm.Mov.Reg(r3, r1),
-		}, arenaTranslateInsns(r3, asm.R2, arena)...),
+		}, arenaTranslateInsns(arena)...),
 			asm.Mov.Imm(r2, 8),
 			asm.Mov.Reg(r1, rfp),
 			asm.Add.Imm(r1, -8),
